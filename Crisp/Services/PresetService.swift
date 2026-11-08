@@ -158,29 +158,7 @@ final class PresetService: ObservableObject, @unchecked Sendable {
             guard let live = displays.first(where: { $0.displayUUID == entry.displayUUID && $0.isOnline }) else {
                 return e
             }
-            switch capture {
-            case .resolution:
-                let mode = live.currentDisplayMode
-                e.width = mode?.width ?? live.pixelWidth
-                e.height = mode?.height ?? live.pixelHeight
-                e.isHiDPI = mode?.isHiDPI ?? false
-                e.refreshRate = mode?.refreshRate
-            case .brightness:
-                e.brightness = live.brightness / 100.0
-            case .arrangement:
-                e.arrangementX = live.bounds.origin.x
-                e.arrangementY = live.bounds.origin.y
-            case .imageAdjustment:
-                e.imageAdjustment = imageAdjustment(of: live)
-            case .hdr:
-                e.hdr = hdr(of: live)
-            case .connection:
-                e.connected = true
-            case .color:
-                e.color = color(of: live)
-            case .virtualDisplays:
-                break  // handled above, at preset level
-            }
+            recapture(capture, into: &e, from: live)
             return e
         }
         if capture == .connection, included {
@@ -190,6 +168,33 @@ final class PresetService: ObservableObject, @unchecked Sendable {
         // What the preset controls changed; it no longer cleanly represents the
         // last-applied state.
         if activePresetID == id { activePresetID = nil }
+    }
+
+    /// Stores `live`'s current value for one capture into a preset entry.
+    private func recapture(_ capture: PresetCapture, into e: inout DisplayPresetEntry, from live: DisplayInfo) {
+        switch capture {
+        case .resolution:
+            let mode = live.currentDisplayMode
+            e.width = mode?.width ?? live.pixelWidth
+            e.height = mode?.height ?? live.pixelHeight
+            e.isHiDPI = mode?.isHiDPI ?? false
+            e.refreshRate = mode?.refreshRate
+        case .brightness:
+            e.brightness = live.brightness / 100.0
+        case .arrangement:
+            e.arrangementX = live.bounds.origin.x
+            e.arrangementY = live.bounds.origin.y
+        case .imageAdjustment:
+            e.imageAdjustment = imageAdjustment(of: live)
+        case .hdr:
+            e.hdr = hdr(of: live)
+        case .connection:
+            e.connected = true
+        case .color:
+            e.color = color(of: live)
+        case .virtualDisplays:
+            break  // stored on the preset itself, not per display
+        }
     }
 
     // MARK: - Apply
@@ -205,10 +210,7 @@ final class PresetService: ObservableObject, @unchecked Sendable {
         }
 
         // First, so the other settings land on the display set the preset was saved with.
-        if let ids = preset.virtualDisplayIDs {
-            await VirtualDisplayService.shared.setActive(configIDs: Set(ids))
-            VirtualDisplayService.shared.displayManagerRefresh()
-        }
+        await applyVirtualDisplays(of: preset)
 
         let displays = await applyConnection(of: preset)
 
@@ -288,6 +290,13 @@ final class PresetService: ObservableObject, @unchecked Sendable {
 
         activePresetID = preset.id
         // DisplayManager is not a singleton; callers with a DisplayManager ref can call refreshDisplays().
+    }
+
+    /// Turns the preset's virtual displays on and the rest off; a no-op when it has none stored.
+    private func applyVirtualDisplays(of preset: DisplayPreset) async {
+        guard let ids = preset.virtualDisplayIDs else { return }
+        await VirtualDisplayService.shared.setActive(configIDs: Set(ids))
+        VirtualDisplayService.shared.displayManagerRefresh()
     }
 
     /// Turns displays on and off before the other settings (#211), so those land on the

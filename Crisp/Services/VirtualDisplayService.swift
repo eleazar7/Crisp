@@ -202,8 +202,11 @@ final class VirtualDisplayService: ObservableObject, @unchecked Sendable {
         let wanted = configs.filter { configIDs.contains($0.id) }
         var started = 0
         for config in wanted {
-            if isActive(config.id) { started += 1 }
-            else if await create(config: config) { started += 1 }
+            if isActive(config.id) {
+                started += 1
+            } else if await create(config: config) {
+                started += 1
+            }
         }
         guard wanted.isEmpty || started > 0 else { return }
         for id in activeConfigIDs.subtracting(configIDs) {
