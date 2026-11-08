@@ -108,9 +108,11 @@ final class PresetService: ObservableObject, @unchecked Sendable {
             includeImageAdjustment: existing.includesImageAdjustment,
             includeHDR: existing.includesHDR,
             includeConnection: existing.includesConnection,
-            includeColor: existing.includesColor
+            includeColor: existing.includesColor,
+            includeVirtualDisplays: existing.includesVirtualDisplays
         )
         presets[index].displays = captured.displays
+        presets[index].virtualDisplayIDs = captured.virtualDisplayIDs
         savePresets()
         // The preset now matches the current state by definition.
         activePresetID = id
@@ -137,6 +139,12 @@ final class PresetService: ObservableObject, @unchecked Sendable {
     func setCapture(id: UUID, _ capture: PresetCapture, included: Bool) {
         guard let index = presets.firstIndex(where: { $0.id == id }) else { return }
         let displays = DisplayManagerAccessor.shared.displays
+        if capture == .virtualDisplays {
+            presets[index].virtualDisplayIDs = included ? Self.activeVirtualDisplayIDs() : nil
+            savePresets()
+            if activePresetID == id { activePresetID = nil }
+            return
+        }
         presets[index].displays = presets[index].displays.map { entry in
             var e = entry
             guard included else {
@@ -170,6 +178,8 @@ final class PresetService: ObservableObject, @unchecked Sendable {
                 e.connected = true
             case .color:
                 e.color = color(of: live)
+            case .virtualDisplays:
+                break  // handled above, at preset level
             }
             return e
         }
@@ -192,6 +202,12 @@ final class PresetService: ObservableObject, @unchecked Sendable {
         defer {
             isApplying = false
             applyingPresetID = nil
+        }
+
+        // First, so the other settings land on the display set the preset was saved with.
+        if let ids = preset.virtualDisplayIDs {
+            await VirtualDisplayService.shared.setActive(configIDs: Set(ids))
+            VirtualDisplayService.shared.displayManagerRefresh()
         }
 
         let displays = await applyConnection(of: preset)
@@ -315,7 +331,8 @@ final class PresetService: ObservableObject, @unchecked Sendable {
                              includeImageAdjustment: Bool = false,
                              includeHDR: Bool = false,
                              includeConnection: Bool = false,
-                             includeColor: Bool = false) -> DisplayPreset {
+                             includeColor: Bool = false,
+                             includeVirtualDisplays: Bool = false) -> DisplayPreset {
         let displays = DisplayManagerAccessor.shared.displays
         var entries: [DisplayPresetEntry] = displays.compactMap { display in
             guard display.isOnline else { return nil }
@@ -336,7 +353,15 @@ final class PresetService: ObservableObject, @unchecked Sendable {
             )
         }
         if includeConnection { entries += offEntries(excluding: entries) }
-        return DisplayPreset(name: name, icon: icon, displays: entries)
+        var preset = DisplayPreset(name: name, icon: icon, displays: entries)
+        if includeVirtualDisplays { preset.virtualDisplayIDs = Self.activeVirtualDisplayIDs() }
+        return preset
+    }
+
+    /// Config IDs of the Crisp virtual displays that are on now, in the order they were saved.
+    static func activeVirtualDisplayIDs() -> [UUID] {
+        let service = VirtualDisplayService.shared
+        return service.configs.map(\.id).filter { service.isActive($0) }
     }
 
     /// A display Crisp disconnected, not already in `entries`, stores only that it is off.

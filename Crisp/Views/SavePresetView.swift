@@ -77,6 +77,7 @@ struct SavePresetForm: View {
     @State private var includeHDR: Bool = false
     @State private var includeConnection: Bool = false
     @State private var includeColor: Bool = false
+    @State private var includeVirtualDisplays: Bool = false
     /// Edit mode only: when on, Save re-captures current values instead of stored ones.
     @State private var recaptureValues: Bool = false
     /// Global shortcut for this preset, held here until Save like name and icon
@@ -105,6 +106,7 @@ struct SavePresetForm: View {
                                         ?? PresetService.shared.anyImageAdjustment)
         _includeHDR = State(initialValue: editing?.includesHDR ?? false)
         _includeColor = State(initialValue: editing?.includesColor ?? false)
+        _includeVirtualDisplays = State(initialValue: editing?.includesVirtualDisplays ?? false)
         // On when a display is off now: that is what such a preset is saved for.
         _includeConnection = State(initialValue: editing?.includesConnection
                                    ?? !PhysicalDisplayToggleService.shared.disconnected.isEmpty)
@@ -113,7 +115,7 @@ struct SavePresetForm: View {
 
     private var nothingSelected: Bool {
         !includeResolution && !includeBrightness && !includeArrangement && !includeImageAdjustment
-            && !includeHDR && !includeConnection && !includeColor
+            && !includeHDR && !includeConnection && !includeColor && !includeVirtualDisplays
     }
 
     /// Stored resolution shown inline only for a single display (clean and
@@ -140,6 +142,14 @@ struct SavePresetForm: View {
         }
         guard !names.isEmpty else { return String(localized: "All displays on") }
         return String(localized: "\(names.formatted(.list(type: .and))) off")
+    }
+
+    /// The virtual displays the stored preset turns on, by name.
+    private var virtualDisplaysDetail: String? {
+        guard let ids = editing?.virtualDisplayIDs else { return nil }
+        let names = VirtualDisplayService.shared.configs.filter { ids.contains($0.id) }.map(\.name)
+        guard !names.isEmpty else { return String(localized: "All virtual displays off") }
+        return String(localized: "\(names.formatted(.list(type: .and))) on")
     }
 
     /// The swatch currently picked in the Color picker; the icon button previews it live.
@@ -275,6 +285,11 @@ struct SavePresetForm: View {
                                  label: "Image Adjustment", isOn: $includeImageAdjustment)
                 CaptureToggleRow(icon: "paintpalette.fill", color: .pink,
                                  label: "Color Profile", isOn: $includeColor)
+                // Only once a virtual display exists, or the preset already stores some.
+                if editing?.includesVirtualDisplays == true || !VirtualDisplayService.shared.configs.isEmpty {
+                    CaptureToggleRow(icon: "display.2", color: .cyan, label: "Virtual Displays",
+                                     detail: virtualDisplaysDetail, isOn: $includeVirtualDisplays)
+                }
                 // Only where it can capture something: a display with the HDR row.
                 if editing?.includesHDR == true || PresetService.shared.anyHDRDisplay {
                     CaptureToggleRow(icon: "tv.fill", color: .purple,
@@ -361,7 +376,8 @@ struct SavePresetForm: View {
                                (.imageAdjustment, includeImageAdjustment),
                                (.hdr, includeHDR),
                                (.connection, includeConnection),
-                               (.color, includeColor)].filter(\.1).map(\.0))
+                               (.color, includeColor),
+                               (.virtualDisplays, includeVirtualDisplays)].filter(\.1).map(\.0))
             )
             // Opt-in: refresh the stored values to the current display state.
             if recaptureValues {
@@ -377,7 +393,8 @@ struct SavePresetForm: View {
                 includeImageAdjustment: includeImageAdjustment,
                 includeHDR: includeHDR,
                 includeConnection: includeConnection,
-                includeColor: includeColor
+                includeColor: includeColor,
+                includeVirtualDisplays: includeVirtualDisplays
             )
             preset.colorName = selectedColor
             PresetService.shared.addPreset(preset)

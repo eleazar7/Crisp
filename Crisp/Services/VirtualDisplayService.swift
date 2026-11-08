@@ -195,6 +195,29 @@ final class VirtualDisplayService: ObservableObject, @unchecked Sendable {
         return true
     }
 
+    /// Makes exactly `configIDs` the active virtual displays (used by presets): creates the
+    /// missing ones first, then destroys the rest. If something was asked for and none of it
+    /// could be started, nothing is destroyed.
+    func setActive(configIDs: Set<UUID>) async {
+        let wanted = configs.filter { configIDs.contains($0.id) }
+        var started = 0
+        for config in wanted {
+            if isActive(config.id) { started += 1 }
+            else if await create(config: config) { started += 1 }
+        }
+        guard wanted.isEmpty || started > 0 else { return }
+        for id in activeConfigIDs.subtracting(configIDs) {
+            let oldDisplayID = activeDisplayObjects[id]?.displayID
+            destroy(configID: id)
+            if let oldDisplayID { await waitForDisplayOffline(oldDisplayID) }
+        }
+    }
+
+    /// Re-reads the online display list after virtual displays came or went.
+    func displayManagerRefresh() {
+        PhysicalDisplayToggleService.shared.displayManager?.refreshDisplays()
+    }
+
     func destroyAll() {
         for uuid in activeConfigIDs {
             activeDisplayObjects.removeValue(forKey: uuid)

@@ -37,6 +37,7 @@ struct DisplayPresetEntry: Codable, Identifiable {
         case .hdr: hdr = nil
         case .connection: connected = nil
         case .color: color = nil
+        case .virtualDisplays: break  // stored on the preset, not per display
         }
     }
 
@@ -54,6 +55,9 @@ struct DisplayPreset: Codable, Identifiable {
     var displays: [DisplayPresetEntry]
     /// Applies this preset; old presets decode as nil (#61).
     var shortcut: KeyboardShortcut? = nil
+    /// The Crisp virtual displays (config IDs) that are on when this preset is applied; every
+    /// other one is turned off. nil = not included, so applying leaves virtual displays alone.
+    var virtualDisplayIDs: [UUID]? = nil
 
     // Which attributes this preset controls (derived from whether any entry stores one).
     var includesResolution: Bool { displays.contains { $0.width != nil } }
@@ -63,6 +67,7 @@ struct DisplayPreset: Codable, Identifiable {
     var includesHDR: Bool { displays.contains { $0.hdr != nil } }
     var includesConnection: Bool { displays.contains { $0.connected != nil } }
     var includesColor: Bool { displays.contains { $0.color != nil } }
+    var includesVirtualDisplays: Bool { virtualDisplayIDs != nil }
 
     func includes(_ capture: PresetCapture) -> Bool {
         switch capture {
@@ -73,13 +78,14 @@ struct DisplayPreset: Codable, Identifiable {
         case .hdr: includesHDR
         case .connection: includesConnection
         case .color: includesColor
+        case .virtualDisplays: includesVirtualDisplays
         }
     }
 }
 
 /// One toggleable attribute the preset row's ⋯ menu can drop or re-add.
 enum PresetCapture: String, CaseIterable, Identifiable {
-    case resolution, brightness, arrangement, imageAdjustment, hdr, connection, color
+    case resolution, brightness, arrangement, imageAdjustment, hdr, connection, color, virtualDisplays
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -90,6 +96,7 @@ enum PresetCapture: String, CaseIterable, Identifiable {
         case .hdr: "HDR"
         case .connection: "Connection"
         case .color: "Color Profile"
+        case .virtualDisplays: "Virtual Displays"
         }
     }
 }
